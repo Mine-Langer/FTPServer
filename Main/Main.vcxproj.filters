@@ -24,12 +24,33 @@
     <ClInclude Include="targetver.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="IOCP.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="IoDefine.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="IoContext.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="IoBuffer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="Main.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="IOCP.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="IoContext.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="IoBuffer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
