@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "IOCP.h"
 
+CIOCP * m_pIocp;
 
 CIOCP::CIOCP()
 {
@@ -9,6 +10,8 @@ CIOCP::CIOCP()
 
 	m_hCompletionPort = m_hJobCompletionPort = NULL;
 	m_hEventThreadStopped = CreateEvent(NULL, TRUE, TRUE, NULL);
+
+	m_pIocp = this;
 
 	m_nThread = 0;
 	m_nThreadJob = 10;
@@ -173,11 +176,114 @@ unsigned int WINAPI CIOCP::ThreadFreeClient(LPVOID pParam)
 
 unsigned int WINAPI CIOCP::ThreadIoWorker(LPVOID pParam)
 {
+	CIOCP* pThis = (CIOCP*)pParam;
+	DWORD dwIoSize = 0;
+	CIoContext* lpIoContext = NULL;
+	CIoBuffer*	lpOverlapBuff = NULL;
+	LPOVERLAPPED lpOverlapped = NULL;
+	BOOL bRet = FALSE;
+	HANDLE hIocp = pThis->m_hCompletionPort;
+
+	InterlockedIncrement(&pThis->m_nThread);
+
+	while (TRUE)
+	{
+		bRet = GetQueuedCompletionStatus(hIocp, &dwIoSize, (LPDWORD)&lpIoContext, &lpOverlapped, INFINITE);
+		if (bRet && lpIoContext != NULL)
+		{
+			lpOverlapBuff = CONTAINING_RECORD(lpOverlapped, CIoBuffer, m_ol);
+			lpOverlapBuff->m_nIoSize = dwIoSize;
+			lpIoContext->ProcessIoMsg(lpOverlapBuff);
+		}
+		else if (!bRet)
+		{
+			lpOverlapBuff = CONTAINING_RECORD(lpOverlapped, CIoBuffer, m_ol);
+			lpIoContext->OnIoFailed(lpOverlapBuff);
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	InterlockedDecrement(&pThis->m_nThread);
+
+	if (pThis->m_nThread <= 0)
+	{
+		SetEvent(pThis->m_hEventThreadStopped);
+	}
+
 	return 0;
 }
 
 unsigned int WINAPI CIOCP::ThreadJob(LPVOID pParam)
 {
+	CIOCP * pThis = (CIOCP*)pParam;
+	DWORD dwIoSize = 0, dwKey = 0;
+	LPOVERLAPPED lpOverlapped = NULL;
+	BOOL bRet = FALSE;
+	HANDLE hIocp = pThis->m_hJobCompletionPort;
+
+	InterlockedIncrement(&pThis->m_nThread);
+	while (TRUE)
+	{
+		bRet = GetQueuedCompletionStatus(hIocp, &dwIoSize, &dwKey, &lpOverlapped, INFINITE);
+		if (!bRet || dwKey == 0)
+			break;
+
+		pThis->ProcessJob();
+	}
+	InterlockedDecrement(&pThis->m_nThread);
+
+	if (pThis->m_nThread <= 0)
+	{
+		SetEvent(pThis->m_hEventThreadStopped);
+	}
 	return 0;
+}
+
+void CIOCP::ProcessJob()
+{
+	CJob Job = GetJob();
+	if (Job.IsNullIoBuffer())
+		AddCloseClient(Job.pIoContext);
+	else
+	{
+		Job.pIoContext->ProcessJob(Job.pIoBuffer);
+		delete Job.pIoBuffer;
+	}
+}
+
+CJob CIOCP::GetJob()
+{
+	CJob Job;
+
+	EnterCriticalSection(&m_csJob);
+	Job = m_dqJobs[0];
+	m_dqJobs.pop_front();
+	LeaveCriticalSection(&m_csJob);
+	
+	return Job;
+}
+
+void CIOCP::AddJob(CJob Job)
+{
+	EnterCriticalSection(&m_csJob);
+	m_dqJobs.push_back(Job);
+	LeaveCriticalSection(&m_csJob);
+
+	WakenOneJobThread();
+}
+
+void CIOCP::WakenOneJobThread()
+{
+	PostQueuedCompletionStatus(m_hJobCompletionPort, 0, 1, NULL);
+}
+
+void CIOCP::AddCloseClient(CIoContext* pIoContext)
+{
+	EnterCriticalSection(&m_csClosedClient);
+	m_dqClosedClient.push_back(pIoContext);
+	LeaveCriticalSection(&m_csClosedClient);
 }
 

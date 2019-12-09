@@ -36,6 +36,12 @@
     <ClInclude Include="IoBuffer.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="FtpSvrIoContext.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="FtpIoContext.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -51,6 +57,12 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="IoBuffer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="FtpSvrIoContext.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="FtpIoContext.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

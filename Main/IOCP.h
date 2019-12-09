@@ -22,9 +22,9 @@ public:
 	static unsigned int WINAPI ThreadIoWorker(LPVOID pParam);
 	static unsigned int WINAPI ThreadJob(LPVOID pParam);
 
-	//CJob GetJob();
+	CJob GetJob();
 	void ProcessJob();
-	//void AddJob(CJob Job);
+	void AddJob(CJob Job);
 	void AddCloseClient(CIoContext* pIoContext);
 	void WakenOneJobThread();
 
@@ -33,7 +33,7 @@ public:
 	HANDLE	m_hJobCompletionPort;
 	HANDLE	m_hFreeClientCompletionPort;
 
-	//deque<CJob> m_dqJobs;
+	deque<CJob> m_dqJobs;
 	HANDLE	m_hEventThreadStopped;
 	LONG	m_nThread;
 	int		m_nThreadJob, m_nThreadIo;

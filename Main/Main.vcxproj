@@ -79,6 +79,8 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="FtpIoContext.h" />
+    <ClInclude Include="FtpSvrIoContext.h" />
     <ClInclude Include="IoBuffer.h" />
     <ClInclude Include="IoContext.h" />
     <ClInclude Include="IOCP.h" />
@@ -87,6 +89,8 @@
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="FtpIoContext.cpp" />
+    <ClCompile Include="FtpSvrIoContext.cpp" />
     <ClCompile Include="IoBuffer.cpp" />
     <ClCompile Include="IoContext.cpp" />
     <ClCompile Include="IOCP.cpp" />
