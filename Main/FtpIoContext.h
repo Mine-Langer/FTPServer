@@ -9,8 +9,12 @@ public:
 
 	virtual void ProcessJob(CIoBuffer* pIoBuffer);
 
-	void FtpProcessRequest(const string& strRequest);
+	void FtpProcessRequest(CIoBuffer* pIoBuffer);
 	
 	bool Welcome();
+
+	int LogonSvr(CIoBuffer* pIoBuffer);
+
+	int SendResponse(const char* szResponse);
 };
 

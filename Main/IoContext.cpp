@@ -113,7 +113,7 @@ bool CIoContext::AsyncAcceptEx()
 	pIoBuffer->Reserve(sizeof(SOCKET) + (sizeof(SOCKADDR_IN) + 16) * 2);
 	pIoBuffer->AddData(skAccept);
 
-	BOOL bRet = m_lpfnAcceptEx(m_sIo, skAccept, pIoBuffer->m_vtBuffer + sizeof(SOCKET), 0,
+	BOOL bRet = /*m_lpfnAcceptEx*/AcceptEx(m_sIo, skAccept, pIoBuffer->m_vtBuffer + sizeof(SOCKET), 0,
 		sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, &dwByteRecved, (LPOVERLAPPED)(&pIoBuffer->m_ol));
 	if (bRet || WSAGetLastError() == ERROR_IO_PENDING)
 		return true;

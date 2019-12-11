@@ -10,6 +10,7 @@
 #include <vector>
 #include <string>
 #include <iostream>
+
 #include <utility>
 #include <map>
 #include <queue>
@@ -39,3 +40,38 @@ typedef map<string, string>	MIMETYPES;
 #define MAX_FTP_REQUEST 40960
 
 #define FTP_DEFAULT_FILE "index.html"
+
+#define FTP_PORT        21     // FTP 控制端口
+#define DATA_FTP_PORT   20     // FTP 数据端口
+#define DATA_BUFSIZE    8192
+#define MAX_NAME_LEN    128
+#define MAX_PWD_LEN     128
+#define MAX_RESP_LEN    1024
+#define MAX_REQ_LEN     256
+#define MAX_ADDR_LEN    80
+
+#define WSA_RECV         0
+#define WSA_SEND         1
+
+#define USER_OK         331
+#define LOGGED_IN       230
+#define LOGIN_FAILED    530
+#define CMD_OK          200
+#define OPENING_AMODE   150
+#define TRANS_COMPLETE  226
+#define CANNOT_FIND     550
+#define FTP_QUIT        221
+#define CURR_DIR        257
+#define DIR_CHANGED     250
+#define OS_TYPE         215
+#define REPLY_MARKER    504
+#define PASSIVE_MODE    227
+
+#define DEFAULT_USER		"admin"
+#define DEFAULT_PASS		"admin"
+#define MAX_FILE_NUM        1024
+
+#define MODE_PORT       0
+#define MODE_PASV       1
+
+#define PORT_BIND   1821

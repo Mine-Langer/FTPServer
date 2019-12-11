@@ -30,14 +30,12 @@ void CFtpSvrIoContext::OnAccepted(CIoBuffer* pIoBuffer)
 		sizeof(SOCKADDR_IN) + 16, &local, &local_len, &remote, &remote_len);
 	CopyMemory(&pIoContext->m_addrRemote, remote, sizeof(SOCKADDR_IN));
 	
-	bool b = pIoContext->Welcome();
-
 	delete pIoBuffer;
 
 	if (!(pIoContext->AssociateWithIocp() && pIoContext->AsyncRecv()))
 		pIoContext->OnClosed();
 	
-	
+	bool b = pIoContext->Welcome();
 }
 
 

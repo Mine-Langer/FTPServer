@@ -36,7 +36,7 @@ public:
 	OVERLAPPED	m_ol;
 	int m_nType;
 	UINT m_nIoSize;
-	bool m_bKeepAlive;
+	bool m_bLoggedIn;
 	char* m_vtBuffer;
 	UINT m_nLen, m_nMaxLen;
 	WSABUF m_wsaBuf;

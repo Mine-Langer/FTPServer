@@ -16,6 +16,10 @@ CIoBuffer::CIoBuffer(int nIoType)
 
 CIoBuffer::~CIoBuffer()
 {
+	if (m_vtBuffer)
+	{
+		HL_SAFEFREE(m_vtBuffer);
+	}
 }
 
 void CIoBuffer::Init()
@@ -23,7 +27,7 @@ void CIoBuffer::Init()
 	m_vtBuffer = NULL;
 	m_nType = -1;
 	m_nIoSize = 0;
-	m_bKeepAlive = true;
+	m_bLoggedIn = false;
 	m_nLen = 0;
 	m_nMaxLen = 0;
 
