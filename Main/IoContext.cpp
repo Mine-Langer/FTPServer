@@ -44,6 +44,8 @@ void CIoContext::Init()
 
 bool CIoContext::StartSvr(int iPort)
 {
+	m_nPort = iPort;
+
 	SOCKADDR_IN svrAddr = {};
 	svrAddr.sin_family = AF_INET;
 	svrAddr.sin_port = htons(iPort);

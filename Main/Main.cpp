@@ -7,10 +7,6 @@
 
 int _tmain(int argc, _TCHAR* argv[])
 {
-	char* pContext = NULL;
-	static char szUser[MAX_NAME_LEN] = "fuck gongfei.\r\n";
-	strtok_s(szUser, " ", &pContext);
-
 	CIOCP Iocp;
 	if (!Iocp.Start())
 	{

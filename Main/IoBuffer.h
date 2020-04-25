@@ -9,6 +9,8 @@
 #define HL_SAFEFREE(p)		if(NULL != p){HeapFree(GetProcessHeap(),0,p);p=NULL;}
 #define HL_PRINT(...)		{ TCHAR szBuffer[1024]={0}; _stprintf_s(szBuffer, 1024 ,__VA_ARGS__); \
 							  WriteConsole(GetStdHandle(STD_OUTPUT_HANDLE),szBuffer,_tcslen(szBuffer),NULL,NULL); }
+#define HL_PRINTA(...)		{ char szBuffer[1024]={0}; sprintf_s(szBuffer, 1024 ,__VA_ARGS__); \
+							  WriteConsoleA(GetStdHandle(STD_OUTPUT_HANDLE),szBuffer,strlen(szBuffer),NULL,NULL); }
 //--------------------
 // IO ²Ù×÷¶¯Ì¬»º³åÇø
 //--------------------
@@ -16,7 +18,6 @@
 class CIoBuffer
 {
 public:
-
 	CIoBuffer();
 	CIoBuffer(int nIoType);
 	virtual ~CIoBuffer();

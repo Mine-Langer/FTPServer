@@ -67,6 +67,13 @@ typedef map<string, string>	MIMETYPES;
 #define REPLY_MARKER    504
 #define PASSIVE_MODE    227
 
+#define FTP_DOWNLOAD	1
+#define FTP_UPLOAD		2
+#define FTP_RENAME		3
+#define FTP_DELETE		4
+#define FTP_CREATE_DIR	5
+#define FTP_LIST		6
+
 #define DEFAULT_USER		"admin"
 #define DEFAULT_PASS		"admin"
 #define MAX_FILE_NUM        1024
@@ -75,3 +82,12 @@ typedef map<string, string>	MIMETYPES;
 #define MODE_PASV       1
 
 #define PORT_BIND   1821
+
+enum
+{
+	STATUS_IDLE = 0,
+	STATUS_LOGIN = 1,
+	STATUS_LIST = 2,
+	STATUS_UPLOAD = 3,
+	STATUS_DOWNLOAD = 4,
+};
