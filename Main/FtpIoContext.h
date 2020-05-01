@@ -30,11 +30,14 @@ protected:
 
 	int DataConn(DWORD dwIP, WORD wPort, int nMode);
 
+	BOOL GetDirectoryList(string szDirectory, string &szResult);
+
 	char* GetLocalAddress();
 	char* ConvertCommandAddress(char* szAddress, WORD wPort);
 
 private:
 	BOOL	m_bLoggedIn;
+	BOOL	m_bPassive = FALSE;
 	int		m_nStatus;
 	string m_szCurrDir;
 };

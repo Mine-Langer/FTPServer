@@ -130,7 +130,11 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 
 	if (szCmd == "PORT")
 	{
-
+		szArg;
+		m_bPassive = FALSE;
+		SendResponse("200 Port command successful.\r\n");
+		
+		return CMD_OK;
 	}
 	else if (szCmd == "PASV")
 	{
@@ -139,16 +143,30 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 			return -1;
 
 		char* szCommandAddress = ConvertCommandAddress(GetLocalAddress(), m_nPort);
+
 		char szText[MAX_PATH] = {};
 		sprintf_s(szText, "227 Entering Passive Mode (%s).\r\n", szCommandAddress);
 		if (!SendResponse(szText))
 			return -1;
-		//bPasv = TRUE;
+		m_bPassive = TRUE;
 		return PASSIVE_MODE;
 	}
 	else if (szCmd == "NLST" || szCmd == "LIST")
 	{
+		string szList;
+		if (!GetDirectoryList(szArg, szList))
+			return -1;
 
+		if (!SendResponse("150 Opening ASCII mode data connection for directory list.\r\n"))
+			return -1;
+
+		//创建连接
+
+		//发送列表信息
+		CIoBuffer* pBuffer = new CIoBuffer();
+		pBuffer->AddData(szList);
+		AsyncSend(pBuffer);
+		return STATUS_LIST;
 	}
 	else if (szCmd == "RETR")
 	{
@@ -304,6 +322,75 @@ int CFtpIoContext::DataConn(DWORD dwIP, WORD wPort, int nMode)
 		}
 	}
 	return 0;
+}
+
+BOOL CFtpIoContext::GetDirectoryList(string szDirectory, string &szResult)
+{
+	string strDirectory = szDirectory;
+	if (strDirectory.empty())
+		strDirectory = m_szCurrDir;
+
+	string strLocalPath;
+	int nResult = CheckDirectory(strDirectory, FTP_LIST, strLocalPath);
+	switch (nResult)
+	{
+	case ERROR_ACCESS_DENIED:
+		SendResponse("550 \"%s\": Permission denied.\r\n"/*, szDirectory.c_str()*/);
+		return FALSE;
+
+	case ERROR_PATH_NOT_FOUND:
+		SendResponse("550 \"%s\": Directory not found.\r\n"/*, szDirectory.c_str()*/);
+		return FALSE;
+
+	default:
+		break;
+	}
+
+	//检测文件是否是目录
+	/*	BOOL bFound = FALSE;
+	if ((GetFileAttributesA(strLocalPath.c_str())&FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY) 
+	{
+		string strPath = strLocalPath;
+		if (strPath.at(strPath.size() - 2) == '\\')
+			bFound = TRUE;
+	}*/
+
+	WIN32_FIND_DATAA wfd = {};
+	HANDLE hFind = FindFirstFileA(strLocalPath.c_str(), &wfd);
+	if (hFind == INVALID_HANDLE_VALUE)
+		return FALSE;
+
+	do 
+	{
+		//文件权限
+		if (wfd.dwFileAttributes == FILE_ATTRIBUTE_DIRECTORY)
+			szResult += "drwx------";
+		else
+			szResult += "-rwx------";
+
+		//文件组
+		szResult += " 1 user group ";
+
+		//文件大小
+		string szLength = to_string(wfd.nFileSizeHigh);
+		string szFiller = "            ";
+		szResult += szFiller.substr(0, szFiller.length() - szLength.length());
+		szResult += szLength;
+
+		//文件日期
+		SYSTEMTIME sysTime = { 0 };
+		FileTimeToSystemTime(&wfd.ftLastWriteTime, &sysTime);
+		szResult = szResult + to_string(sysTime.wYear) + "-" + to_string(sysTime.wMonth) + "-" + to_string(sysTime.wDay)
+			+ " " + to_string(sysTime.wHour) + ":" + to_string(sysTime.wMinute) + ":" + to_string(sysTime.wSecond);
+
+		//文件名称
+		szResult += wfd.cFileName;
+		szResult += "\r\n";
+
+	} while (FindNextFileA(hFind, &wfd));
+
+	FindClose(hFind);
+	return TRUE;
 }
 
 char* CFtpIoContext::GetLocalAddress()

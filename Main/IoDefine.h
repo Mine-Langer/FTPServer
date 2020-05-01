@@ -10,7 +10,7 @@
 #include <vector>
 #include <string>
 #include <iostream>
-
+#include <atlstr.h>
 #include <utility>
 #include <map>
 #include <queue>
