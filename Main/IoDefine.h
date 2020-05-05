@@ -91,3 +91,15 @@ enum
 	STATUS_UPLOAD = 3,
 	STATUS_DOWNLOAD = 4,
 };
+
+typedef struct _FILE_INFO
+{
+	TCHAR    szFileName[MAX_PATH];
+	DWORD    dwFileAttributes;
+	FILETIME ftCreationTime;
+	FILETIME ftLastAccessTime;
+	FILETIME ftLastWriteTime;
+	DWORD    nFileSizeHigh;
+	DWORD    nFileSizeLow;
+}
+FILE_INFO, *LPFILE_INFO;

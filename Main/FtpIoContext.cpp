@@ -130,7 +130,12 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 
 	if (szCmd == "PORT")
 	{
-		szArg;
+		vector<string> vecData;
+		ConvertDotAddress(szArg, vecData);
+
+		m_szRemoteAddr = vecData[0] + "." + vecData[1] + "." + vecData[2] + "." + vecData[3];
+		m_nRemotePort = 256 * stoi(vecData[4]) + stoi(vecData[5]);
+
 		m_bPassive = FALSE;
 		SendResponse("200 Port command successful.\r\n");
 		
@@ -139,20 +144,40 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 	else if (szCmd == "PASV")
 	{
 		//在PASV模式下，服务端创建新的监听套接字来连接客户端
-		if (-1 == DataConn(htonl(INADDR_ANY), m_nPort, MODE_PASV))
+		if (-1 == DataConn(htonl(INADDR_ANY), PORT_BIND, MODE_PASV))
 			return -1;
 
-		char* szCommandAddress = ConvertCommandAddress(GetLocalAddress(), m_nPort);
+		char* szCommandAddress = ConvertCommandAddress(GetLocalAddress(), PORT_BIND);
 
 		char szText[MAX_PATH] = {};
 		sprintf_s(szText, "227 Entering Passive Mode (%s).\r\n", szCommandAddress);
 		if (!SendResponse(szText))
 			return -1;
+
 		m_bPassive = TRUE;
 		return PASSIVE_MODE;
 	}
 	else if (szCmd == "NLST" || szCmd == "LIST")
 	{
+		if (m_bPassive)
+		{
+			SOCKET s = accept(m_sDataIo, NULL, NULL);
+			if (s != INVALID_SOCKET)
+				closesocket(s);
+		}
+
+		const char* szOpeningAMode = "150 Opening ASCII mode data connection for ";
+
+		char szText[1024] = { 0 };
+		if (!m_bPassive)
+			sprintf_s(szText, 1024, "%s/bin/ls.\r\n", szOpeningAMode);
+		else
+			sprintf_s(szText, 1024, "125 Data connection already open; Transfer starting.\r\n");
+		
+		if (!SendResponse(szText))
+			return -1;
+		
+		// 获取文件列表信息
 		string szList;
 		if (!GetDirectoryList(szArg, szList))
 			return -1;
@@ -274,38 +299,40 @@ void CFtpIoContext::DoChangeDirectory(string szDir)
 
 int CFtpIoContext::DataConn(DWORD dwIP, WORD wPort, int nMode)
 {
-	SOCKET sk = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
-	if (sk == INVALID_SOCKET)
+	m_sDataIo = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
+	if (m_sDataIo == INVALID_SOCKET)
 		return -1;
 
 	SOCKADDR_IN inetAddr = {};
 	inetAddr.sin_family = AF_INET;
-	if (MODE_PASV == nMode) {
+	if (MODE_PASV == nMode) 
+	{
 		inetAddr.sin_port = htons(wPort);
 		inetAddr.sin_addr.s_addr = dwIP;
 	}
-	else {
-		inetAddr.sin_port = htons(wPort);
+	else 
+	{
+		inetAddr.sin_port = htons(DATA_FTP_PORT);
 		inetAddr.sin_addr.s_addr = inet_addr(GetLocalAddress());
 	}
 
 	BOOL optVal = TRUE;
-	if (setsockopt(sk, SOL_SOCKET, SO_REUSEADDR, (char*)&optVal, sizeof(optVal)) == SOCKET_ERROR) {
+	if (setsockopt(m_sDataIo, SOL_SOCKET, SO_REUSEADDR, (char*)&optVal, sizeof(optVal)) == SOCKET_ERROR) {
 		HL_PRINT(_T("setsockopt失败，错误码：%d\r\n"), WSAGetLastError());
-		closesocket(sk);
+		closesocket(m_sDataIo);
 		return -1;
 	}
 
-	if (bind(sk, (SOCKADDR*)&inetAddr, sizeof(inetAddr)) == SOCKET_ERROR) {
+	if (bind(m_sDataIo, (SOCKADDR*)&inetAddr, sizeof(inetAddr)) == SOCKET_ERROR) {
 		HL_PRINT(_T("bind套接字失败, 错误码:%d\r\n"), WSAGetLastError());
-		closesocket(sk);
+		closesocket(m_sDataIo);
 		return -1;
 	}
 
 	if (MODE_PASV == nMode) {
-		if (listen(sk, SOMAXCONN) == SOCKET_ERROR) {
+		if (listen(m_sDataIo, SOMAXCONN) == SOCKET_ERROR) {
 			HL_PRINT(_T("listen套接字失败,错误码:%d\r\n"), WSAGetLastError());
-			closesocket(sk);
+			closesocket(m_sDataIo);
 			return -1;
 		}
 	}
@@ -315,9 +342,9 @@ int CFtpIoContext::DataConn(DWORD dwIP, WORD wPort, int nMode)
 		addr.sin_family = AF_INET;
 		addr.sin_port = htons(wPort);
 		addr.sin_addr.s_addr = dwIP;
-		if (connect(sk, (SOCKADDR*)&addr, sizeof(addr)) == SOCKET_ERROR) {
+		if (connect(m_sDataIo, (SOCKADDR*)&addr, sizeof(addr)) == SOCKET_ERROR) {
 			HL_PRINT(_T("connect套接字失败,错误码:%d\r\n"), WSAGetLastError());
-			closesocket(sk);
+			closesocket(m_sDataIo);
 			return -1;
 		}
 	}
@@ -434,6 +461,105 @@ char* CFtpIoContext::ConvertCommandAddress(char* szAddress, WORD wPort)
 	return szAddress;
 }
 
+int CFtpIoContext::ConvertDotAddress(const string& strText, vector<string>& vecdata)
+{
+	size_t pos = 0, iStart = 0;
+	while (pos!=strText.npos)
+	{
+		pos = strText.find(',', iStart);
+		string str = strText.substr(iStart, pos-iStart);
+		vecdata.emplace_back(str);
+		iStart = pos+1;
+	}
+
+	return 0;
+}
+
+UINT CFtpIoContext::FileListToString(string& szBuff, UINT nBuffSize, BOOL bDetails)
+{
+	FILE_INFO fi[MAX_FILE_NUM] = {};
+	int nFiles = GetFileList(fi, MAX_FILE_NUM, "*.*");
+	char szTemp[MAX_PATH] = { 0 };
+	szBuff.clear();
+
+	if (bDetails)
+	{
+		for (int i = 0; i < nFiles; i++)
+		{
+			if (szBuff.size() > nBuffSize - 128) break;
+			if (!strcmp(fi[i].szFileName, ".")) continue;
+			if (!strcmp(fi[i].szFileName, "..")) continue;
+
+			//时间
+			SYSTEMTIME st;
+			FileTimeToSystemTime(&fi[i].ftLastWriteTime, &st);
+			char* szNoon = "AM";
+			if (st.wHour > 12)
+			{
+				st.wHour -= 12;
+				szNoon = "PM";
+			}
+
+			sprintf_s(szTemp, "%02u-%02u-%02u %02u:%02u%s        ", 
+				st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, szNoon);
+			szBuff += szTemp;
+			if (fi[i].dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			{
+				szBuff += "<DIR>          ";
+			}
+			else
+			{
+				//文件大小
+				sprintf_s(szTemp, MAX_PATH, "% 9d", fi[i].nFileSizeLow);
+				szBuff += szTemp;
+			}
+			//文件名
+			szBuff += fi[i].szFileName;
+			szBuff += "\r\n";
+		}
+	}
+	else
+	{
+		for (int i=0; i<nFiles; i++)
+		{
+			if (szBuff.size() + strlen(fi[i].szFileName) + 2 < nBuffSize)
+			{
+				szBuff += fi[i].szFileName;
+				szBuff += "\r\n";
+			}
+			else
+				break;
+		}
+	}
+	return szBuff.size();
+}
+int CFtpIoContext::GetFileList(LPFILE_INFO pFI, UINT nArraySize, const char* szPath)
+{
+	WIN32_FIND_DATA wfd = { 0 };
+	int idx = 0;
+	char lpFileName[MAX_PATH] = { 0 };
+	GetCurrentDirectory(MAX_PATH, lpFileName);
+
+	strcat_s(lpFileName, "\\");
+	strcat_s(lpFileName, szPath);
+
+	HANDLE hFile = FindFirstFile(lpFileName, &wfd);
+	if (hFile != INVALID_HANDLE_VALUE)
+	{
+		do 
+		{
+			pFI[idx].dwFileAttributes = wfd.dwFileAttributes;
+			lstrcpy(pFI[idx].szFileName, wfd.cFileName);
+			pFI[idx].ftCreationTime = wfd.ftCreationTime;
+			pFI[idx].ftLastWriteTime = wfd.ftLastWriteTime;
+			pFI[idx].ftLastAccessTime = wfd.ftLastAccessTime;
+			pFI[idx].nFileSizeHigh = wfd.nFileSizeHigh;
+			pFI[idx].nFileSizeLow = wfd.nFileSizeLow;
+		} while (FindNextFile(hFile, &wfd) && idx<nArraySize);
+		FindClose(hFile);
+	}
+	return idx;
+}
 int CFtpIoContext::CheckDirectory(string szDir, int opt, string& szResult)
 {
 	replace(szDir.begin(), szDir.end(), '\\', '/');

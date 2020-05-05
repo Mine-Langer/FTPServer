@@ -35,10 +35,20 @@ protected:
 	char* GetLocalAddress();
 	char* ConvertCommandAddress(char* szAddress, WORD wPort);
 
+	int ConvertDotAddress(const string& strText, vector<string>& vecdata);
+
+	UINT FileListToString(string& szBuff, UINT nBuffSize, BOOL bDetails);
+	int GetFileList(LPFILE_INFO pFI, UINT nArraySize, const char* szPath);
+
 private:
 	BOOL	m_bLoggedIn;
 	BOOL	m_bPassive = FALSE;
 	int		m_nStatus;
 	string m_szCurrDir;
+
+	string m_szRemoteAddr;
+	int	   m_nRemotePort;
+
+	SOCKET m_sDataIo;
 };
 
