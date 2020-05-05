@@ -131,11 +131,8 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 	if (szCmd == "PORT")
 	{
 		vector<string> vecData;
-		ConvertDotAddress(szArg, vecData);
-
-		m_szRemoteAddr = vecData[0] + "." + vecData[1] + "." + vecData[2] + "." + vecData[3];
-		m_nRemotePort = 256 * stoi(vecData[4]) + stoi(vecData[5]);
-
+		ConvertDotAddress(szArg);
+		
 		m_bPassive = FALSE;
 		SendResponse("200 Port command successful.\r\n");
 		
@@ -179,10 +176,29 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 		
 		// 获取文件列表信息
 		string szList;
-		if (!GetDirectoryList(szArg, szList))
+		UINT nStrLen = FileListToString(szList, TRUE);
+		/*if (!GetDirectoryList(szArg, szList))
+			return -1;*/
+
+		if (!m_bPassive)
+		{
+			if (!DataConn(m_dwRemoteAddr, m_nRemotePort, MODE_PORT))
+				return -1;
+
+			if (-1 == DataSend(m_sDataIo, const_cast<char*>(szList.c_str()), szList.size()))
+				return -1;
+			closesocket(m_sDataIo);
+		}
+		else
+		{
+			DataSend(m_sDataIo, const_cast<char*>(szList.c_str()), szList.size());
+			closesocket(m_sDataIo);
+		}
+
+		if (!SendResponse("226 Transfer complete.\r\n"))
 			return -1;
 
-		if (!SendResponse("150 Opening ASCII mode data connection for directory list.\r\n"))
+		/*if (!SendResponse("150 Opening ASCII mode data connection for directory list.\r\n"))
 			return -1;
 
 		//创建连接
@@ -190,8 +206,8 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 		//发送列表信息
 		CIoBuffer* pBuffer = new CIoBuffer();
 		pBuffer->AddData(szList);
-		AsyncSend(pBuffer);
-		return STATUS_LIST;
+		AsyncSend(pBuffer);*/
+		return TRANS_COMPLETE;
 	}
 	else if (szCmd == "RETR")
 	{
@@ -461,8 +477,9 @@ char* CFtpIoContext::ConvertCommandAddress(char* szAddress, WORD wPort)
 	return szAddress;
 }
 
-int CFtpIoContext::ConvertDotAddress(const string& strText, vector<string>& vecdata)
+BOOL CFtpIoContext::ConvertDotAddress(const string& strText)
 {
+	vector<string> vecdata;
 	size_t pos = 0, iStart = 0;
 	while (pos!=strText.npos)
 	{
@@ -472,10 +489,14 @@ int CFtpIoContext::ConvertDotAddress(const string& strText, vector<string>& vecd
 		iStart = pos+1;
 	}
 
-	return 0;
+	string strAddr = vecdata[0] + "." + vecdata[1] + "." + vecdata[2] + "." + vecdata[3];
+	m_dwRemoteAddr = inet_addr(strAddr.c_str());
+	m_nRemotePort = 256 * stoi(vecdata[4]) + stoi(vecdata[5]);
+
+	return TRUE;
 }
 
-UINT CFtpIoContext::FileListToString(string& szBuff, UINT nBuffSize, BOOL bDetails)
+UINT CFtpIoContext::FileListToString(string& szBuff, BOOL bDetails)
 {
 	FILE_INFO fi[MAX_FILE_NUM] = {};
 	int nFiles = GetFileList(fi, MAX_FILE_NUM, "*.*");
@@ -486,7 +507,7 @@ UINT CFtpIoContext::FileListToString(string& szBuff, UINT nBuffSize, BOOL bDetai
 	{
 		for (int i = 0; i < nFiles; i++)
 		{
-			if (szBuff.size() > nBuffSize - 128) break;
+		//	if (szBuff.size() > nBuffSize - 128) break;
 			if (!strcmp(fi[i].szFileName, ".")) continue;
 			if (!strcmp(fi[i].szFileName, "..")) continue;
 
@@ -522,13 +543,13 @@ UINT CFtpIoContext::FileListToString(string& szBuff, UINT nBuffSize, BOOL bDetai
 	{
 		for (int i=0; i<nFiles; i++)
 		{
-			if (szBuff.size() + strlen(fi[i].szFileName) + 2 < nBuffSize)
+		//	if (szBuff.size() + strlen(fi[i].szFileName) + 2 < nBuffSize)
 			{
 				szBuff += fi[i].szFileName;
 				szBuff += "\r\n";
 			}
-			else
-				break;
+		//	else
+		//		break;
 		}
 	}
 	return szBuff.size();
@@ -560,6 +581,26 @@ int CFtpIoContext::GetFileList(LPFILE_INFO pFI, UINT nArraySize, const char* szP
 	}
 	return idx;
 }
+
+int CFtpIoContext::DataSend(SOCKET s, char* buff, int nBufSize)
+{
+	int nBytesLeft = nBufSize;
+	int idx = 0, nBytes = 0;
+	while (nBytesLeft>0)
+	{
+		nBytes = send(s, &buff[idx], nBytesLeft, 0);
+		if (nBytes == SOCKET_ERROR)
+		{
+			HL_PRINT(_T("Failed to send buffer to socket %d\r\n"), WSAGetLastError());
+			closesocket(s);
+			return -1;
+		}
+		nBytesLeft -= nBytes;
+		idx += nBytes;
+	}
+	return idx;
+}
+
 int CFtpIoContext::CheckDirectory(string szDir, int opt, string& szResult)
 {
 	replace(szDir.begin(), szDir.end(), '\\', '/');

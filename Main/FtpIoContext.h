@@ -35,10 +35,12 @@ protected:
 	char* GetLocalAddress();
 	char* ConvertCommandAddress(char* szAddress, WORD wPort);
 
-	int ConvertDotAddress(const string& strText, vector<string>& vecdata);
+	BOOL ConvertDotAddress(const string& strText);
 
-	UINT FileListToString(string& szBuff, UINT nBuffSize, BOOL bDetails);
+	UINT FileListToString(string& szBuff, BOOL bDetails);
 	int GetFileList(LPFILE_INFO pFI, UINT nArraySize, const char* szPath);
+
+	int DataSend(SOCKET s, char* buff, int nBufSize);
 
 private:
 	BOOL	m_bLoggedIn;
@@ -46,7 +48,7 @@ private:
 	int		m_nStatus;
 	string m_szCurrDir;
 
-	string m_szRemoteAddr;
+	DWORD  m_dwRemoteAddr;
 	int	   m_nRemotePort;
 
 	SOCKET m_sDataIo;
