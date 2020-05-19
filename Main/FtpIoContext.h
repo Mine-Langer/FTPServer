@@ -42,6 +42,8 @@ protected:
 
 	int DataSend(SOCKET s, char* buff, int nBufSize);
 
+	char* AbsoluteDirectory(string& szDir);
+
 private:
 	BOOL	m_bLoggedIn;
 	BOOL	m_bPassive = FALSE;

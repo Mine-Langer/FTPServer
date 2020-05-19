@@ -198,15 +198,6 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 		if (!SendResponse("226 Transfer complete.\r\n"))
 			return -1;
 
-		/*if (!SendResponse("150 Opening ASCII mode data connection for directory list.\r\n"))
-			return -1;
-
-		//创建连接
-
-		//发送列表信息
-		CIoBuffer* pBuffer = new CIoBuffer();
-		pBuffer->AddData(szList);
-		AsyncSend(pBuffer);*/
 		return TRANS_COMPLETE;
 	}
 	else if (szCmd == "RETR")
@@ -232,15 +223,31 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 			return -1;
 		return CURR_DIR;
 	}
-	else if (szCmd == "CWD")
+	else if (szCmd == "CWD" || szCmd == "CDUP")
 	{
-		DoChangeDirectory(szArg.c_str());
-		SendResponse("250 Directory changed to /Music\r\n");
-		return DIR_CHANGED;
-	}
-	else if (szCmd == "CDUP")
-	{
-		DoChangeDirectory("..");
+		if (szArg.empty())
+			szArg = "\\";
+
+		char szDir[MAX_PATH] = { 0 };
+		if (szCmd == "CDUP")
+			strcpy_s(szDir, MAX_PATH, "..");
+		else
+			strcpy_s(szDir, AbsoluteDirectory(szArg));
+
+		if (!SetCurrentDirectory(szDir))
+		{
+			sprintf_s(szCurrDir, MAX_PATH, "\\%s", szDir);
+			sprintf_s(szDir, MAX_PATH, "550 %s No such file or directory.\r\n", RelativeDirectory(szCurrDir));
+			SendResponse(szDir);
+			return CANNOT_FIND;
+		}
+		else
+		{
+			GetCurrentDirectoryA(MAX_PATH, szCurrDir);
+			sprintf_s(szDir, MAX_PATH, "250 Directory changed to /%s.\r\n", RelativeDirectory(szCurrDir));
+			SendResponse(szDir);
+			return DIR_CHANGED;
+		}
 	}
 	else if (szCmd == "SYST")
 	{
@@ -599,6 +606,33 @@ int CFtpIoContext::DataSend(SOCKET s, char* buff, int nBufSize)
 		idx += nBytes;
 	}
 	return idx;
+}
+
+char* CFtpIoContext::AbsoluteDirectory(string& szDir)
+{
+	auto Slash2Back = [&](string& szPath) {
+		int idx = 0;
+		if (szPath.empty()) return (char*)NULL;
+		transform(szDir.begin(), szDir.end(), szDir.begin(), ::toupper);
+		while (szPath[idx])
+		{
+			if ('/' == szPath[idx])
+				szPath[idx] = '\\';
+			idx++;
+		}
+		return const_cast<char*>(szPath.c_str());
+	};
+
+	char szText[MAX_PATH] = { 0 };
+	strcpy_s(szText, MAX_PATH, m_szCurrDir.c_str()+2);
+	if (szDir.empty())
+		return NULL;
+
+	if ('/' == szDir[0])
+		strcat_s(szText, szDir.c_str());
+	szDir = szText;
+
+	return Slash2Back(szDir);
 }
 
 int CFtpIoContext::CheckDirectory(string szDir, int opt, string& szResult)
