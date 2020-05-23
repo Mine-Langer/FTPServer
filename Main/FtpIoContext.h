@@ -40,6 +40,7 @@ protected:
 	UINT FileListToString(string& szBuff, BOOL bDetails);
 	int GetFileList(LPFILE_INFO pFI, UINT nArraySize, const char* szPath);
 
+	SOCKET DataAccept(SOCKET& s);
 	int DataSend(SOCKET s, char* buff, int nBufSize);
 
 	char* AbsoluteDirectory(string& szDir);

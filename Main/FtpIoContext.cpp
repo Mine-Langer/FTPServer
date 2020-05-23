@@ -41,7 +41,10 @@ bool CFtpIoContext::Welcome()
 	CIoBuffer* pBuffer = new CIoBuffer();
 	pBuffer->AddData(szWelcome, strlen(szWelcome));
 
-	SetCurrentDirectory(_T("F:\\Music"));
+	char szText[MAX_PATH] = { 0 };
+	GetCurrentDirectory(MAX_PATH, szText);
+	m_szCurrDir = szText;
+	SetCurrentDirectory(szText);
 
 	return AsyncSend(pBuffer);
 }
@@ -144,7 +147,7 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 		if (-1 == DataConn(htonl(INADDR_ANY), PORT_BIND, MODE_PASV))
 			return -1;
 
-		char* szCommandAddress = ConvertCommandAddress(GetLocalAddress(), PORT_BIND);
+		char* szCommandAddress = ConvertCommandAddress(/*GetLocalAddress()*/"127.0.0.1", PORT_BIND);
 
 		char szText[MAX_PATH] = {};
 		sprintf_s(szText, "227 Entering Passive Mode (%s).\r\n", szCommandAddress);
@@ -156,11 +159,10 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 	}
 	else if (szCmd == "NLST" || szCmd == "LIST")
 	{
+		SOCKET sAccept;
 		if (m_bPassive)
 		{
-			SOCKET s = accept(m_sDataIo, NULL, NULL);
-			if (s != INVALID_SOCKET)
-				closesocket(s);
+			sAccept = DataAccept(m_sDataIo);
 		}
 
 		const char* szOpeningAMode = "150 Opening ASCII mode data connection for ";
@@ -191,8 +193,8 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 		}
 		else
 		{
-			DataSend(m_sDataIo, const_cast<char*>(szList.c_str()), szList.size());
-			closesocket(m_sDataIo);
+			DataSend(sAccept, const_cast<char*>(szList.c_str()), szList.size());
+			closesocket(sAccept);
 		}
 
 		if (!SendResponse("226 Transfer complete.\r\n"))
@@ -469,9 +471,10 @@ char* CFtpIoContext::GetLocalAddress()
 
 char* CFtpIoContext::ConvertCommandAddress(char* szAddress, WORD wPort)
 {
-	char szPort[10] = { 0 };
+	char szPort[10] = { 0 }, szIpAddress[20] = { 0 };
+	static char szResult[30] = { 0 };
+	
 	sprintf_s(szPort, "%d,%d", wPort / 256, wPort % 256);
-	char szIpAddress[20] = { 0 };
 	sprintf_s(szIpAddress, "%s,", szAddress);
 	int idx = 0;
 	while (szIpAddress[idx])
@@ -480,8 +483,8 @@ char* CFtpIoContext::ConvertCommandAddress(char* szAddress, WORD wPort)
 			szIpAddress[idx] = ',';
 		idx++;
 	}
-	sprintf(szAddress, "%s%s", szIpAddress, szPort);
-	return szAddress;
+	sprintf_s(szResult, 30, "%s%s", szIpAddress, szPort);
+	return szResult;
 }
 
 BOOL CFtpIoContext::ConvertDotAddress(const string& strText)
@@ -563,7 +566,6 @@ UINT CFtpIoContext::FileListToString(string& szBuff, BOOL bDetails)
 }
 int CFtpIoContext::GetFileList(LPFILE_INFO pFI, UINT nArraySize, const char* szPath)
 {
-	WIN32_FIND_DATA wfd = { 0 };
 	int idx = 0;
 	char lpFileName[MAX_PATH] = { 0 };
 	GetCurrentDirectory(MAX_PATH, lpFileName);
@@ -571,6 +573,7 @@ int CFtpIoContext::GetFileList(LPFILE_INFO pFI, UINT nArraySize, const char* szP
 	strcat_s(lpFileName, "\\");
 	strcat_s(lpFileName, szPath);
 
+	WIN32_FIND_DATA wfd = { 0 };
 	HANDLE hFile = FindFirstFile(lpFileName, &wfd);
 	if (hFile != INVALID_HANDLE_VALUE)
 	{
@@ -583,10 +586,18 @@ int CFtpIoContext::GetFileList(LPFILE_INFO pFI, UINT nArraySize, const char* szP
 			pFI[idx].ftLastAccessTime = wfd.ftLastAccessTime;
 			pFI[idx].nFileSizeHigh = wfd.nFileSizeHigh;
 			pFI[idx].nFileSizeLow = wfd.nFileSizeLow;
-		} while (FindNextFile(hFile, &wfd) && idx<nArraySize);
+		} while (FindNextFile(hFile, &wfd) && ++idx<nArraySize);
 		FindClose(hFile);
 	}
 	return idx;
+}
+
+SOCKET CFtpIoContext::DataAccept(SOCKET& s)
+{
+	SOCKET sAccept = accept(s, NULL, NULL);
+	if (sAccept != INVALID_SOCKET)
+		closesocket(s);
+	return sAccept;
 }
 
 int CFtpIoContext::DataSend(SOCKET s, char* buff, int nBufSize)
