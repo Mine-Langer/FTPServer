@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "FtpIoContext.h"
 
+const char* MONTHNAME[] = { "", "Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec" };
 
 CFtpIoContext::CFtpIoContext(SOCKET sock) :CIoContext(sock), m_bLoggedIn(FALSE)
 {
@@ -272,7 +273,11 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 	}
 	else if (szCmd == "NOOP")
 	{
-
+		char szText[MAX_PATH] = {};
+		sprintf_s(szText, MAX_PATH, "200 NOOP command successful.\r\n");
+		if (!SendResponse(szText))
+			return -1;
+		return CMD_OK;
 	}
 	else
 	{
@@ -517,33 +522,29 @@ UINT CFtpIoContext::FileListToString(string& szBuff, BOOL bDetails)
 	{
 		for (int i = 0; i < nFiles; i++)
 		{
-		//	if (szBuff.size() > nBuffSize - 128) break;
 			if (!strcmp(fi[i].szFileName, ".")) continue;
 			if (!strcmp(fi[i].szFileName, "..")) continue;
+
+			//权限
+			if (fi[i].dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+				szBuff += "drwx------";
+			else
+				szBuff += "-rwx------";			
+
+			//分组
+			szBuff += " 1 user group ";
+
+			//文件大小
+			sprintf_s(szTemp, MAX_PATH, "% 14d", fi[i].nFileSizeLow);
+			szBuff += szTemp;
 
 			//时间
 			SYSTEMTIME st;
 			FileTimeToSystemTime(&fi[i].ftLastWriteTime, &st);
-			char* szNoon = "AM";
-			if (st.wHour > 12)
-			{
-				st.wHour -= 12;
-				szNoon = "PM";
-			}
-
-			sprintf_s(szTemp, "%02u-%02u-%02u %02u:%02u%s        ", 
-				st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, szNoon);
+			sprintf_s(szTemp, MAX_PATH, " %s %02u %02u:%02u ",
+				MONTHNAME[st.wMonth], st.wDay, st.wHour, st.wMinute);
 			szBuff += szTemp;
-			if (fi[i].dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-			{
-				szBuff += "<DIR>          ";
-			}
-			else
-			{
-				//文件大小
-				sprintf_s(szTemp, MAX_PATH, "% 9d", fi[i].nFileSizeLow);
-				szBuff += szTemp;
-			}
+
 			//文件名
 			szBuff += fi[i].szFileName;
 			szBuff += "\r\n";
@@ -553,13 +554,8 @@ UINT CFtpIoContext::FileListToString(string& szBuff, BOOL bDetails)
 	{
 		for (int i=0; i<nFiles; i++)
 		{
-		//	if (szBuff.size() + strlen(fi[i].szFileName) + 2 < nBuffSize)
-			{
-				szBuff += fi[i].szFileName;
-				szBuff += "\r\n";
-			}
-		//	else
-		//		break;
+			szBuff += fi[i].szFileName;
+			szBuff += "\r\n";
 		}
 	}
 	return szBuff.size();
