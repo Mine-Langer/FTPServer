@@ -45,6 +45,9 @@ protected:
 
 	char* AbsoluteDirectory(string& szDir);
 
+	int CheckFileName(string szFilename, int nOption, string& szResult);
+	BOOL GetLocalPath(string szRelativePath, CString& szLocalPath);
+
 private:
 	BOOL	m_bLoggedIn;
 	BOOL	m_bPassive = FALSE;

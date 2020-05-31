@@ -116,7 +116,6 @@ int CFtpIoContext::SendResponse(const char* szResponse)
 
 int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 {
-	//char szCmd[MAX_REQ_LEN] = {};
 	char szCurrDir[MAX_PATH] = {};
 
 	char* pContext = NULL;
@@ -180,9 +179,7 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 		// 获取文件列表信息
 		string szList;
 		UINT nStrLen = FileListToString(szList, TRUE);
-		/*if (!GetDirectoryList(szArg, szList))
-			return -1;*/
-
+	
 		if (!m_bPassive)
 		{
 			if (!DataConn(m_dwRemoteAddr, m_nRemotePort, MODE_PORT))
@@ -203,9 +200,41 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 
 		return TRANS_COMPLETE;
 	}
+	else if (szCmd == "SIZE")
+	{
+		char szText[1024] = { 0 };
+		DWORD dwFileSize = 0;
+		HANDLE hFile = CreateFileA(szArg.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hFile != INVALID_HANDLE_VALUE)
+		{
+			dwFileSize = GetFileSize(hFile, NULL);
+			CloseHandle(hFile);
+		}
+		sprintf_s(szText, MAX_PATH, "213 %d\r\n", dwFileSize);
+		if (!SendResponse(szText))
+			return -1;
+	}
 	else if (szCmd == "RETR")
 	{
+		if (!SendResponse("150 Opening BINARY mode data connection for file transfer.\r\n"))
+			return -1;
 
+		SOCKET sAccept;
+		if (m_bPassive)
+		{
+			sAccept = DataAccept(m_sDataIo);
+			HANDLE hFile = CreateFileA(szArg.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+			DWORD dwFileSize = GetFileSize(hFile, NULL);
+			uint8_t* pBuffer = new uint8_t[dwFileSize];
+			DWORD dwLen = 0;
+			ReadFile(hFile, pBuffer, dwFileSize, &dwLen, NULL);
+			CloseHandle(hFile);
+			int iSend = send(sAccept, reinterpret_cast<const char*>(pBuffer), dwLen, 0);
+			delete[] pBuffer;
+		}
+
+		if (!SendResponse("226 File transfered.\r\n"))
+			return -1;
 	}
 	else if (szCmd == "STOR")
 	{
@@ -641,6 +670,28 @@ char* CFtpIoContext::AbsoluteDirectory(string& szDir)
 
 	return Slash2Back(szDir);
 }
+
+//检查文件是否存在
+int CFtpIoContext::CheckFileName(string szFilename, int nOption, string& szResult)
+{
+	szFilename.replace(szFilename.begin(), szFilename.end(), "\\", "/");
+	if (szFilename.empty())
+		return ERROR_FILE_NOT_FOUND;
+
+	string szDirectory = m_szCurrDir;
+	int nPos = szFilename.rfind('/');
+	if (nPos != -1)
+	{
+		szDirectory = szFilename.substr(0, nPos);
+		if (szDirectory.empty())
+			szDirectory = "/";
+		szFilename = szFilename.substr(0, nPos + 1);
+	}
+
+	//获取绝对路径
+	return 0;
+}
+
 
 int CFtpIoContext::CheckDirectory(string szDir, int opt, string& szResult)
 {
