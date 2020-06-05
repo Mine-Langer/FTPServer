@@ -81,6 +81,7 @@ bool CIoContext::GetExtensionFunctionPointer()
 {
 	GUID GuidAcceptEx = WSAID_ACCEPTEX;
 	GUID GuidGetAcceptExSockAddrs = WSAID_GETACCEPTEXSOCKADDRS;
+	GUID GuidTransmitFile = WSAID_TRANSMITFILE;
 	DWORD dwBytes = 0;
 
 	if (SOCKET_ERROR == WSAIoctl(m_sIo, SIO_GET_EXTENSION_FUNCTION_POINTER,
@@ -93,6 +94,13 @@ bool CIoContext::GetExtensionFunctionPointer()
 	if (SOCKET_ERROR == WSAIoctl(m_sIo, SIO_GET_EXTENSION_FUNCTION_POINTER,
 		&GuidGetAcceptExSockAddrs, sizeof(GuidGetAcceptExSockAddrs), &m_lpfnGetAcceptExSockAddrs,
 		sizeof(m_lpfnGetAcceptExSockAddrs), &dwBytes, NULL, NULL))
+	{
+		HL_PRINT(_T("WSAIoctl未能获取GuidGetAcceptExSockAddrs函数指针。错误码：%d\n"), WSAGetLastError());
+		return false;
+	}
+
+	if (SOCKET_ERROR == WSAIoctl(m_sIo, SIO_GET_EXTENSION_FUNCTION_POINTER,
+		&GuidTransmitFile, sizeof(GuidTransmitFile), &m_lpfnTransmitFile, sizeof(m_lpfnTransmitFile), &dwBytes, NULL, NULL))
 	{
 		HL_PRINT(_T("WSAIoctl未能获取GuidGetAcceptExSockAddrs函数指针。错误码：%d\n"), WSAGetLastError());
 		return false;
@@ -113,7 +121,7 @@ bool CIoContext::AsyncAcceptEx()
 	pIoBuffer->Reserve(sizeof(SOCKET) + (sizeof(SOCKADDR_IN) + 16) * 2);
 	pIoBuffer->AddData(skAccept);
 
-	BOOL bRet = /*m_lpfnAcceptEx*/AcceptEx(m_sIo, skAccept, pIoBuffer->m_vtBuffer + sizeof(SOCKET), 0,
+	BOOL bRet = m_lpfnAcceptEx(m_sIo, skAccept, pIoBuffer->m_vtBuffer + sizeof(SOCKET), 0,
 		sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, &dwByteRecved, (LPOVERLAPPED)(&pIoBuffer->m_ol));
 	if (bRet || WSAGetLastError() == ERROR_IO_PENDING)
 		return true;
@@ -151,6 +159,7 @@ void CIoContext::ProcessIoMsg(CIoBuffer* pIoBuffer)
 		OnSent(pIoBuffer);
 		break;
 	case IOFileTransmitted:
+
 		break;
 	default:
 		delete pIoBuffer;

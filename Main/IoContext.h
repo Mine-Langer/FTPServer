@@ -51,6 +51,7 @@ public:
 
 	LPFN_ACCEPTEX	m_lpfnAcceptEx;
 	LPFN_GETACCEPTEXSOCKADDRS	m_lpfnGetAcceptExSockAddrs;
+	LPFN_TRANSMITFILE m_lpfnTransmitFile;
 
 private:
 	HANDLE	m_hConThreadId;

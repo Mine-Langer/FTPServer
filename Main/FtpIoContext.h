@@ -15,7 +15,7 @@ public:
 
 	int LogonSvr(CIoBuffer* pIoBuffer);
 
-	int SendResponse(const char* szResponse);
+	int SendResponse(const char* szFormat, ...);
 
 protected:
 	int ParseCommand(CIoBuffer* pIoBuff);
@@ -42,6 +42,9 @@ protected:
 
 	SOCKET DataAccept(SOCKET& s);
 	int DataSend(SOCKET s, char* buff, int nBufSize);
+	int DataRecv(SOCKET s, const char* szFilename);
+
+	DWORD WriteToFile(SOCKET s, const char* szFilename);
 
 	char* AbsoluteDirectory(string& szDir);
 

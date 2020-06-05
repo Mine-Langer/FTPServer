@@ -78,9 +78,7 @@ int CFtpIoContext::LogonSvr(CIoBuffer* pIoBuff)
 		strtok_s(szUser, "\r\n", &pContext);
 		//响应信息
 		m_nStatus = STATUS_LOGIN;
-		char szResponse[MAX_PATH] = {};
-		sprintf_s(szResponse, "331 Password required for %s\r\n", szUser);
-		SendResponse(szResponse);
+		SendResponse("331 Password required for %s\r\n", szUser);
 		return USER_OK;
 	}
 
@@ -106,8 +104,14 @@ int CFtpIoContext::LogonSvr(CIoBuffer* pIoBuff)
 	return nRet;
 }
 
-int CFtpIoContext::SendResponse(const char* szResponse)
+int CFtpIoContext::SendResponse(const char* szFormat, ...)
 {
+	char szResponse[1024] = { 0 };	
+	va_list ap;
+	va_start(ap, szFormat);
+	vsnprintf_s(szResponse, 1024, szFormat, ap);
+	va_end(ap);
+
 	CIoBuffer* pBuffer = new CIoBuffer();
 	pBuffer->AddData(szResponse, strlen(szResponse));
 	HL_PRINTA("    %s", szResponse);
@@ -149,9 +153,7 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 
 		char* szCommandAddress = ConvertCommandAddress(/*GetLocalAddress()*/"127.0.0.1", PORT_BIND);
 
-		char szText[MAX_PATH] = {};
-		sprintf_s(szText, "227 Entering Passive Mode (%s).\r\n", szCommandAddress);
-		if (!SendResponse(szText))
+		if (!SendResponse("227 Entering Passive Mode (%s)\r\n", szCommandAddress))
 			return -1;
 
 		m_bPassive = TRUE;
@@ -210,8 +212,7 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 			dwFileSize = GetFileSize(hFile, NULL);
 			CloseHandle(hFile);
 		}
-		sprintf_s(szText, MAX_PATH, "213 %d\r\n", dwFileSize);
-		if (!SendResponse(szText))
+		if (!SendResponse("213 %d\r\n", dwFileSize))
 			return -1;
 	}
 	else if (szCmd == "RETR")
@@ -238,7 +239,30 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 	}
 	else if (szCmd == "STOR")
 	{
+		SOCKET sAccept;
+		if (m_bPassive)
+			sAccept = DataAccept(m_sDataIo);
+		
+		if (szArg.empty())
+			return -1;
 
+		const char* szOpeningAMode = "150 Opening ASCII mode data connection for ";
+		if (!SendResponse("%s%s.\r\n", szOpeningAMode, szArg.c_str()))
+			return -1;
+
+		// 处理DATA ftp连接
+		if (m_bPassive)
+			DataRecv(sAccept, szArg.c_str());
+		else
+		{
+			if (DataConn(m_dwRemoteAddr, m_nRemotePort, MODE_PORT) == -1)
+				return -1;
+			DataRecv(sAccept, szArg.c_str());
+		}
+
+		if (!SendResponse("226 Transfer complete.\r\n"))
+			return -1;
+		return TRANS_COMPLETE;
 	}
 	else if (szCmd == "QUIT")
 	{
@@ -249,9 +273,8 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 	else if (szCmd == "XPWD" || szCmd == "PWD")
 	{
 		GetCurrentDirectoryA(MAX_PATH, szCurrDir);
-		char szText[MAX_PATH] = {};
-		sprintf_s(szText, "257 \"%s\" is current directory.\r\n", m_szCurrDir.c_str());
-		if (!SendResponse(szText))
+
+		if (!SendResponse("257 \"%s\" is current directory.\r\n", m_szCurrDir.c_str()))
 			return -1;
 		return CURR_DIR;
 	}
@@ -289,31 +312,30 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 	}
 	else if (szCmd == "TYPE")
 	{
-		char szText[MAX_PATH] = {};
-		sprintf_s(szText, "200 Type set to %s \r\n", szArg.c_str());
-		if (!SendResponse(szText))
+		if (szArg.empty())
+			szArg = "A";
+
+		if (!SendResponse("200 Type set to %s \r\n", szArg.c_str()))
 			return -1;
+
 		return CMD_OK;
 	}
 	else if (szCmd == "REST")
 	{
-
-		SendResponse("350 Restarting at \r\n");
+		if (!SendResponse("504 Reply marker must be 0.\r\n"))
+			return -1;
+		return REPLY_MARKER;
 	}
 	else if (szCmd == "NOOP")
 	{
-		char szText[MAX_PATH] = {};
-		sprintf_s(szText, MAX_PATH, "200 NOOP command successful.\r\n");
-		if (!SendResponse(szText))
+		if (!SendResponse("200 NOOP command successful.\r\n"))
 			return -1;
 		return CMD_OK;
 	}
 	else
 	{
 		//其余都是无效命令
-		char szText[MAX_PATH] = {};
-		sprintf_s(szText, "500 '%s' command not understand.\r\n", szCmd.c_str());
-		if (!SendResponse(szText))
+		if (!SendResponse("500 '%s' command not understand.\r\n", szCmd.c_str()))
 			return -1;
 
 	}
@@ -641,6 +663,67 @@ int CFtpIoContext::DataSend(SOCKET s, char* buff, int nBufSize)
 		nBytesLeft -= nBytes;
 		idx += nBytes;
 	}
+	return idx;
+}
+
+int CFtpIoContext::DataRecv(SOCKET s, const char* szFilename)
+{
+	return WriteToFile(s, szFilename);
+}
+
+DWORD CFtpIoContext::WriteToFile(SOCKET s, const char* szFile)
+{
+	DWORD idx = 0, dwBytesWritten = 0, dwBytesLeft = DATA_BUFSIZE;
+	char buf[DATA_BUFSIZE] = { 0 }, szFileName[MAX_PATH] = { 0 };
+	GetCurrentDirectory(MAX_PATH, szFileName);
+	strcat_s(szFileName, MAX_PATH, "\\");
+	strcat_s(szFileName, MAX_PATH, szFile);
+
+	HANDLE hFile = CreateFile(szFileName, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile == INVALID_HANDLE_VALUE)
+		return 0;
+
+	while (TRUE)
+	{
+		int nBytesRecv = 0;
+		idx = 0;
+		dwBytesLeft = DATA_BUFSIZE;
+		while (dwBytesLeft>0)
+		{
+			nBytesRecv = recv(s, &buf[idx], dwBytesLeft, 0);
+			if (nBytesRecv == SOCKET_ERROR)
+				return -1;
+
+			if (nBytesRecv == 0)
+				break;
+
+			idx += nBytesRecv;
+			dwBytesLeft -= nBytesRecv;
+		}
+
+		dwBytesLeft = idx;	// 要写入文件中的字节数
+		idx = 0;			// 索引清0 指向开始位置
+
+		while (dwBytesLeft > 0)
+		{
+			//移动文件指针到文件末尾
+			if (!SetEndOfFile(hFile))
+				return 0;
+
+			if (!WriteFile(hFile, &buf[idx], dwBytesLeft, &dwBytesWritten, NULL))
+			{
+				CloseHandle(hFile);
+				return 0;
+			}
+
+			idx += dwBytesWritten;
+			dwBytesLeft -= dwBytesWritten;
+		}
+		// 如果没有数据接收，退出循环
+		if (nBytesRecv == 0)
+			break;
+	}
+	CloseHandle(hFile);
 	return idx;
 }
 
