@@ -52,11 +52,6 @@ void CIoBuffer::AddData(const char* pData, UINT nSize)
 				m_nMaxLen = m_nLen + nSize;
 			}
 		}
-
-		/*for (UINT i = 0; i < nSize; i++)
-		{
-			m_vtBuffer[m_nLen + i] = pData[i];
-		}*/
 		CopyMemory(m_vtBuffer + m_nLen, pData, nSize);
 		m_nLen += nSize;
 	}

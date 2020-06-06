@@ -48,14 +48,12 @@ public:
 	SOCKET	m_sIo;
 	SOCKADDR_IN	m_addrRemote;
 
-
 	LPFN_ACCEPTEX	m_lpfnAcceptEx;
 	LPFN_GETACCEPTEXSOCKADDRS	m_lpfnGetAcceptExSockAddrs;
 	LPFN_TRANSMITFILE m_lpfnTransmitFile;
 
 private:
-	HANDLE	m_hConThreadId;
-	
+	HANDLE	m_hConThreadId;	
 };
 
 class CJob

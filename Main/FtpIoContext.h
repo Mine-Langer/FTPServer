@@ -28,9 +28,7 @@ protected:
 
 	void DoChangeDirectory(string szDir);
 
-	int DataConn(DWORD dwIP, WORD wPort, int nMode);
-
-	BOOL GetDirectoryList(string szDirectory, string &szResult);
+	BOOL DataConn(DWORD dwIP, WORD wPort, int nMode);
 
 	char* GetLocalAddress();
 	char* ConvertCommandAddress(char* szAddress, WORD wPort);
@@ -40,7 +38,7 @@ protected:
 	UINT FileListToString(string& szBuff, BOOL bDetails);
 	int GetFileList(LPFILE_INFO pFI, UINT nArraySize, const char* szPath);
 
-	SOCKET DataAccept(SOCKET& s);
+	SOCKET DataAccept();
 	int DataSend(SOCKET s, char* buff, int nBufSize);
 	int DataRecv(SOCKET s, const char* szFilename);
 
@@ -60,6 +58,7 @@ private:
 	DWORD  m_dwRemoteAddr;
 	int	   m_nRemotePort;
 
+	// DATA FTP Ì×½Ó×Ö
 	SOCKET m_sDataIo;
 };
 

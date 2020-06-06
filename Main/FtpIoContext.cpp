@@ -147,11 +147,11 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 	}
 	else if (szCmd == "PASV")
 	{
-		//在PASV模式下，服务端创建新的监听套接字来连接客户端
-		if (-1 == DataConn(htonl(INADDR_ANY), PORT_BIND, MODE_PASV))
+		// 在PASV模式下，服务端创建新的监听套接字来连接客户端
+		if (FALSE == DataConn(htonl(INADDR_ANY), PORT_BIND, MODE_PASV))
 			return -1;
 
-		char* szCommandAddress = ConvertCommandAddress(/*GetLocalAddress()*/"127.0.0.1", PORT_BIND);
+		char* szCommandAddress = ConvertCommandAddress(GetLocalAddress(), PORT_BIND);
 
 		if (!SendResponse("227 Entering Passive Mode (%s)\r\n", szCommandAddress))
 			return -1;
@@ -161,15 +161,13 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 	}
 	else if (szCmd == "NLST" || szCmd == "LIST")
 	{
-		SOCKET sAccept;
+		SOCKET sAccept = INVALID_SOCKET;
 		if (m_bPassive)
-		{
-			sAccept = DataAccept(m_sDataIo);
-		}
-
-		const char* szOpeningAMode = "150 Opening ASCII mode data connection for ";
+			sAccept = DataAccept();
 
 		char szText[1024] = { 0 };
+		const char* szOpeningAMode = "150 Opening ASCII mode data connection for ";
+
 		if (!m_bPassive)
 			sprintf_s(szText, 1024, "%s/bin/ls.\r\n", szOpeningAMode);
 		else
@@ -189,12 +187,14 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 
 			if (-1 == DataSend(m_sDataIo, const_cast<char*>(szList.c_str()), szList.size()))
 				return -1;
+
 			closesocket(m_sDataIo);
 		}
 		else
 		{
 			DataSend(sAccept, const_cast<char*>(szList.c_str()), szList.size());
 			closesocket(sAccept);
+			sAccept = INVALID_SOCKET;
 		}
 
 		if (!SendResponse("226 Transfer complete.\r\n"))
@@ -220,18 +220,33 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 		if (!SendResponse("150 Opening BINARY mode data connection for file transfer.\r\n"))
 			return -1;
 
-		SOCKET sAccept;
+		SOCKET sAccept = INVALID_SOCKET;
 		if (m_bPassive)
 		{
-			sAccept = DataAccept(m_sDataIo);
-			HANDLE hFile = CreateFileA(szArg.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-			DWORD dwFileSize = GetFileSize(hFile, NULL);
-			uint8_t* pBuffer = new uint8_t[dwFileSize];
-			DWORD dwLen = 0;
-			ReadFile(hFile, pBuffer, dwFileSize, &dwLen, NULL);
-			CloseHandle(hFile);
-			int iSend = send(sAccept, reinterpret_cast<const char*>(pBuffer), dwLen, 0);
+			sAccept = DataAccept();
+			HANDLE hFile = CreateFileA(szArg.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);			
+			/*DWORD dwFileSize = GetFileSize(hFile, NULL), dwReadLen = 0;
+			char* pBuffer = new char[dwFileSize];
+			ReadFile(hFile, pBuffer, dwFileSize, &dwReadLen, NULL);
+			if (SOCKET_ERROR != send(sAccept, pBuffer, dwReadLen, 0))
+			{
+				SendResponse("451 File transfer failed. error code:%d.\r\n", WSAGetLastError());
+				delete[] pBuffer;
+				CloseHandle(hFile);
+				return -1;
+			}
+
 			delete[] pBuffer;
+			CloseHandle(hFile);*/
+			if (FALSE == TransmitFile(sAccept, hFile, 0, 0, NULL, NULL, TF_USE_DEFAULT_WORKER))
+			{
+				SendResponse("451 File transfer failed. error code:%d.\r\n", WSAGetLastError()); 
+				CloseHandle(hFile);
+				return -1;
+			}
+			CloseHandle(hFile);
+			closesocket(sAccept);
+			sAccept = INVALID_SOCKET;
 		}
 
 		if (!SendResponse("226 File transfered.\r\n"))
@@ -241,7 +256,7 @@ int CFtpIoContext::ParseCommand(CIoBuffer* pIoBuff)
 	{
 		SOCKET sAccept;
 		if (m_bPassive)
-			sAccept = DataAccept(m_sDataIo);
+			sAccept = DataAccept();
 		
 		if (szArg.empty())
 			return -1;
@@ -378,11 +393,11 @@ void CFtpIoContext::DoChangeDirectory(string szDir)
 	}
 }
 
-int CFtpIoContext::DataConn(DWORD dwIP, WORD wPort, int nMode)
+BOOL CFtpIoContext::DataConn(DWORD dwIP, WORD wPort, int nMode)
 {
-	m_sDataIo = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
+	m_sDataIo = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (m_sDataIo == INVALID_SOCKET)
-		return -1;
+		return FALSE;
 
 	SOCKADDR_IN inetAddr = {};
 	inetAddr.sin_family = AF_INET;
@@ -401,20 +416,20 @@ int CFtpIoContext::DataConn(DWORD dwIP, WORD wPort, int nMode)
 	if (setsockopt(m_sDataIo, SOL_SOCKET, SO_REUSEADDR, (char*)&optVal, sizeof(optVal)) == SOCKET_ERROR) {
 		HL_PRINT(_T("setsockopt失败，错误码：%d\r\n"), WSAGetLastError());
 		closesocket(m_sDataIo);
-		return -1;
+		return FALSE;
 	}
 
 	if (bind(m_sDataIo, (SOCKADDR*)&inetAddr, sizeof(inetAddr)) == SOCKET_ERROR) {
 		HL_PRINT(_T("bind套接字失败, 错误码:%d\r\n"), WSAGetLastError());
 		closesocket(m_sDataIo);
-		return -1;
+		return FALSE;
 	}
 
 	if (MODE_PASV == nMode) {
 		if (listen(m_sDataIo, SOMAXCONN) == SOCKET_ERROR) {
 			HL_PRINT(_T("listen套接字失败,错误码:%d\r\n"), WSAGetLastError());
 			closesocket(m_sDataIo);
-			return -1;
+			return FALSE;
 		}
 	}
 	else if (MODE_PORT == nMode)
@@ -426,78 +441,9 @@ int CFtpIoContext::DataConn(DWORD dwIP, WORD wPort, int nMode)
 		if (connect(m_sDataIo, (SOCKADDR*)&addr, sizeof(addr)) == SOCKET_ERROR) {
 			HL_PRINT(_T("connect套接字失败,错误码:%d\r\n"), WSAGetLastError());
 			closesocket(m_sDataIo);
-			return -1;
+			return FALSE;
 		}
 	}
-	return 0;
-}
-
-BOOL CFtpIoContext::GetDirectoryList(string szDirectory, string &szResult)
-{
-	string strDirectory = szDirectory;
-	if (strDirectory.empty())
-		strDirectory = m_szCurrDir;
-
-	string strLocalPath;
-	int nResult = CheckDirectory(strDirectory, FTP_LIST, strLocalPath);
-	switch (nResult)
-	{
-	case ERROR_ACCESS_DENIED:
-		SendResponse("550 \"%s\": Permission denied.\r\n"/*, szDirectory.c_str()*/);
-		return FALSE;
-
-	case ERROR_PATH_NOT_FOUND:
-		SendResponse("550 \"%s\": Directory not found.\r\n"/*, szDirectory.c_str()*/);
-		return FALSE;
-
-	default:
-		break;
-	}
-
-	//检测文件是否是目录
-	/*	BOOL bFound = FALSE;
-	if ((GetFileAttributesA(strLocalPath.c_str())&FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY) 
-	{
-		string strPath = strLocalPath;
-		if (strPath.at(strPath.size() - 2) == '\\')
-			bFound = TRUE;
-	}*/
-
-	WIN32_FIND_DATAA wfd = {};
-	HANDLE hFind = FindFirstFileA(strLocalPath.c_str(), &wfd);
-	if (hFind == INVALID_HANDLE_VALUE)
-		return FALSE;
-
-	do 
-	{
-		//文件权限
-		if (wfd.dwFileAttributes == FILE_ATTRIBUTE_DIRECTORY)
-			szResult += "drwx------";
-		else
-			szResult += "-rwx------";
-
-		//文件组
-		szResult += " 1 user group ";
-
-		//文件大小
-		string szLength = to_string(wfd.nFileSizeHigh);
-		string szFiller = "            ";
-		szResult += szFiller.substr(0, szFiller.length() - szLength.length());
-		szResult += szLength;
-
-		//文件日期
-		SYSTEMTIME sysTime = { 0 };
-		FileTimeToSystemTime(&wfd.ftLastWriteTime, &sysTime);
-		szResult = szResult + to_string(sysTime.wYear) + "-" + to_string(sysTime.wMonth) + "-" + to_string(sysTime.wDay)
-			+ " " + to_string(sysTime.wHour) + ":" + to_string(sysTime.wMinute) + ":" + to_string(sysTime.wSecond);
-
-		//文件名称
-		szResult += wfd.cFileName;
-		szResult += "\r\n";
-
-	} while (FindNextFileA(hFind, &wfd));
-
-	FindClose(hFind);
 	return TRUE;
 }
 
@@ -639,11 +585,23 @@ int CFtpIoContext::GetFileList(LPFILE_INFO pFI, UINT nArraySize, const char* szP
 	return idx;
 }
 
-SOCKET CFtpIoContext::DataAccept(SOCKET& s)
+SOCKET CFtpIoContext::DataAccept()
 {
-	SOCKET sAccept = accept(s, NULL, NULL);
+	if (m_sDataIo == INVALID_SOCKET)
+		return INVALID_SOCKET;
+
+	SOCKET sAccept = accept(m_sDataIo, NULL, NULL);
 	if (sAccept != INVALID_SOCKET)
-		closesocket(s);
+	{
+		closesocket(m_sDataIo);
+		m_sDataIo = INVALID_SOCKET;
+	}
+
+	struct linger so_linger;
+	so_linger.l_onoff = 1;
+	so_linger.l_linger = 30;
+	setsockopt(sAccept, SOL_SOCKET, SO_LINGER, (const char*)&so_linger, sizeof(so_linger));
+
 	return sAccept;
 }
 
@@ -801,6 +759,5 @@ int CFtpIoContext::CheckDirectory(string szDir, int opt, string& szResult)
 		}
 	}
 
-	//bool bPathExist = GetLocalPath(szDir, szResult);
 	return 0;
 }
